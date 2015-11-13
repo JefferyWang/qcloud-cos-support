@@ -1,5 +1,5 @@
 # qcloud-cos-support
-使用腾讯云对象存储服务 COS 作为附件存储空间的Wordpress插件。
+使用腾讯云对象存储服务 COS 作为附件存储空间的Wordpress插件，本插件核心功能使用了腾讯云COS官方SDK。
 
 ## 安装
 
