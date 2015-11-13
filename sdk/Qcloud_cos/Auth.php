@@ -9,16 +9,16 @@ class Auth
 
     /**
      * 生成多次有效签名函数（用于上传和下载资源，有效期内可重复对不同资源使用）
-     * @param  int $expired    过期时间,unix时间戳  
+     * @param  int $expired    过期时间,unix时间戳
      * @param  string $bucketName 文件所在bucket
      * @return string          签名
      */
     public static function appSign($expired, $bucketName) {
+        $conf_object = new Conf();
+        $appId = $conf_object::$APPID;
+        $secretId = $conf_object::$SECRET_ID;
+        $secretKey = $conf_object::$SECRET_KEY;
 
-        $appId = Conf::APPID;
-        $secretId = Conf::SECRET_ID;
-        $secretKey = Conf::SECRET_KEY;
-        
         if (empty($secretId) || empty($secretKey) || empty($appId)) {
             return self::AUTH_SECRET_ID_KEY_ERROR;
         }
@@ -33,20 +33,20 @@ class Auth
      * @return string             签名
      */
     public static function appSign_once($path, $bucketName) {
-
-        $appId = Conf::APPID;
-        $secretId = Conf::SECRET_ID;
-        $secretKey = Conf::SECRET_KEY;
+        $conf_object = new Conf();
+        $appId = $conf_object::$APPID;
+        $secretId = $conf_object::$SECRET_ID;
+        $secretKey = $conf_object::$SECRET_KEY;
 
         if (preg_match('/^\//', $path) == 0) {
             $path = '/' . $path;
         }
         $fileId = '/' . $appId . '/' . $bucketName . $path;
-        
+
         if (empty($secretId) || empty($secretKey) || empty($appId)) {
             return self::AUTH_SECRET_ID_KEY_ERROR;
         }
-                    
+
         return self::appSignBase($appId, $secretId, $secretKey, 0, $fileId, $bucketName);
     }
 
@@ -59,22 +59,23 @@ class Auth
      */
     public static function appSign_multiple($path, $bucketName, $expired) {
 
-        $appId = Conf::APPID;
-        $secretId = Conf::SECRET_ID;
-        $secretKey = Conf::SECRET_KEY;
+        $conf_object = new Conf();
+        $appId = $conf_object::$APPID;
+        $secretId = $conf_object::$SECRET_ID;
+        $secretKey = $conf_object::$SECRET_KEY;
 
         if (preg_match('/^\//', $path) == 0) {
             $path = '/' . $path;
         }
         $fileId = $path;
-        
+
         if (empty($secretId) || empty($secretKey) || empty($appId)) {
             return self::AUTH_SECRET_ID_KEY_ERROR;
         }
-                    
+
         return self::appSignBase($appId, $secretId, $secretKey, $expired, $fileId, $bucketName);
     }
-    
+
     /**
      * 签名函数（上传、下载会生成多次有效签名，删除资源会生成单次有效签名）
      * @param  string $appId
@@ -104,4 +105,3 @@ class Auth
 }
 
 //end of script
-

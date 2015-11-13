@@ -17,7 +17,6 @@ if ( !defined('WP_PLUGIN_URL') )
 
 define('COS_BASENAME', plugin_basename(__FILE__));
 define('COS_BASEFOLDER', plugin_basename(dirname(__FILE__)));
-define('COS_FILENAME', str_replace(DFM_BASEFOLDER.'/', '', plugin_basename(__FILE__)));
 
 // 初始化选项
 register_activation_hook(__FILE__, 'cos_set_options');
@@ -31,11 +30,224 @@ function cos_set_options() {
         'secret_key' => "",
 		'nothumb' => "false", // 是否上传所旅途
 		'nolocalsaving' => "false", // 是否保留本地备份
-		//'upload_path' => "", // 存储位置
         'upload_url_path' => "", // URL前缀
     );
     add_option('cos_options', $options, '', 'yes');
 }
+
+
+/**
+ * 上传函数
+ * @param $object
+ * @param $file
+ * @param $opt
+ * @return bool
+ */
+function _file_upload( $object , $file , $opt = array()){
+	//设置超时时间
+	//set_time_limit(120);
+
+	//如果文件不存在，直接返回FALSE
+	if( !@file_exists($file) )
+		return FALSE;
+
+	//获取WP配置信息
+	$cos_options = get_option('cos_options', TRUE);
+	$cos_bucket = esc_attr($cos_options['bucket']);
+
+	if(@file_exists($file)) {
+		try {
+			//实例化存储对象
+			$qcloud_cos = new Cosapi();
+			$dirname = dirname($object);
+			_create_folder($cos_bucket, $dirname);
+			$qcloud_cos->upload($file, $cos_bucket, $object);
+			return TRUE;
+		} catch(Exception $ex) {
+			return FALSE;
+		}
+	} else {
+		return FALSE;
+	}
+}
+
+function _create_folder($cos_bucket, $dir)
+{
+	$qcloud_cos = new Cosapi();
+	$data = $qcloud_cos->statFolder($cos_bucket, $dir.'/');
+	if ($data['code'] == -166) {
+		$dir_array = explode('/', $dir);
+		$dir_name = '';
+		foreach ($dir_array as $dir) {
+			$dir_name .= ($dir.'/');
+			$result = $qcloud_cos->statFolder($cos_bucket, $dir_name);
+			if ($result['code'] == -166) {
+				$qcloud_cos->createFolder($cos_bucket, $dir_name);
+			}
+		}
+	}
+}
+
+
+/**
+ * 是否需要删除本地文件
+ * @return bool
+*/
+function _is_delete_local_file() {
+	$cos_options = get_option('cos_options', TRUE);
+	return (esc_attr($cos_options['nolocalsaving'])=='true');
+}
+
+
+/**
+ * 删除本地文件
+ * @param $file 本地文件路径
+ * @return bool
+ */
+function _delete_local_file($file){
+	try{
+	  //文件不存在
+		if(!@file_exists($file))
+			return TRUE;
+		//删除文件
+		if(!@unlink($file))
+			return FALSE;
+		return TRUE;
+	}
+	catch(Exception $ex){
+		return FALSE;
+	}
+}
+
+
+/**
+ * 上传附件（包括图片的原图）
+ * @param $metadata
+ * @return array()
+ */
+function upload_attachments($metadata) {
+	$wp_uploads = wp_upload_dir();
+	//生成object在OSS中的存储路径
+	if(get_option('upload_path') == '.') {
+		//如果含有“./”则去除之
+		$metadata['file'] = str_replace("./" ,'' ,$metadata['file']);
+	}
+	$metadata['file'] = str_replace("\\", '/', $metadata['file']);
+	$object = str_replace(get_home_path(), '', $metadata['file']);
+
+	//在本地的存储路径
+	$file = get_home_path().$object;	//向上兼容，较早的WordPress版本上$metadata['file']存放的是相对路径
+
+	//设置可选参数
+	$opt =array('Content-Type' => $metadata['type']);
+
+	//执行上传操作
+	_file_upload ( '/'.$object, $file, $opt);
+
+	//如果不在本地保存，则删除本地文件
+	if( _is_delete_local_file() ){
+		_delete_local_file($file);
+	}
+	return $metadata;
+}
+//避免上传插件/主题时出现同步到COS的情况
+if(substr_count($_SERVER['REQUEST_URI'],'/update.php') <= 0)
+	add_filter('wp_handle_upload', 'upload_attachments', 50);
+
+
+/**
+ * 上传图片的缩略图
+ */
+function upload_thumbs($metadata) {
+	//上传所有缩略图
+	if (isset($metadata['sizes']) && count($metadata['sizes']) > 0)
+	{
+		//获取COS插件的配置信息
+		$cos_options = get_option('cos_options', TRUE);
+		//是否需要上传缩略图
+		$nothumb = (esc_attr($cos_options['nothumb']) == 'true');
+		//是否需要删除本地文件
+		$is_delete_local_file = (esc_attr($cos_options['nolocalsaving'])=='true');
+
+		//如果禁止上传缩略图，就不用继续执行了
+		if( $nothumb ) {
+			return $metadata;
+		}
+
+		//获取上传路径
+		$wp_uploads = wp_upload_dir();
+		//得到本地文件夹和远端文件夹
+		$file_path = $wp_uploads['path'].'/';
+		if(get_option('upload_path') == '.') {
+			$file_path = str_replace("./" ,'' , $file_path);
+		}
+		$file_path = str_replace("\\", '/', $file_path);
+		$object_path = str_replace(get_home_path(), '', $file_path);
+
+		//there may be duplicated filenames,so ....
+		foreach ($metadata['sizes'] as $val)
+		{
+			//生成object在COS中的存储路径
+			$object = '/'.$object_path.$val['file'];
+			//生成本地存储路径
+			$file = $file_path . $val['file'];
+			//设置可选参数
+			$opt =array('Content-Type' => $val['mime-type']);
+
+			//执行上传操作
+			_file_upload ( $object, $file, $opt );
+
+			//如果不在本地保存，则删除
+			if($is_delete_local_file)
+				_delete_local_file($file);
+		}
+	}
+	return $metadata;
+}
+//避免上传插件/主题时出现同步到COS的情况
+if(substr_count($_SERVER['REQUEST_URI'],'/update.php') <= 0)
+	add_filter('wp_generate_attachment_metadata', 'upload_thumbs', 100);
+
+
+/**
+ * 删除远程服务器上的单个文件
+ */
+function delete_remote_file($file)
+{
+	//获取WP配置信息
+	$cos_options = get_option('cos_options', TRUE);
+	$cos_bucket = esc_attr($cos_options['bucket']);
+
+	//得到远程路径
+	file_put_contents('test1.log', $file);
+	$file = str_replace("\\", '/', $file);
+	$del_file_path = str_replace(get_home_path().'/'.get_option('upload_path').'/', '/', $file);
+	file_put_contents('test2.log', $del_file_path);
+	try{
+		//实例化存储对象
+		$qcloud_cos = new Cosapi();
+		//删除文件
+		file_put_contents('test.log', $del_file_path);
+		$qcloud_cos->del($cos_bucket, $del_file_path);
+	} catch(Exception $ex){
+
+	}
+	return $file;
+}
+add_action('wp_delete_file', 'delete_remote_file', 100);
+
+
+// 当upload_path为根目录时，需要移除URL中出现的“绝对路径”
+function modefiy_img_url($url, $post_id) {
+	$home_path =  get_home_path();
+	$url = str_replace("\\", '/', $url);
+    $url = str_replace($home_path ,'' ,$url);
+	return $url;
+}
+if (get_option('upload_path') == '.') {
+	add_filter('wp_get_attachment_url', 'modefiy_img_url', 30, 2);
+}
+
 
 // 在插件列表页添加设置按钮
 function cos_plugin_action_links( $links, $file ) {
@@ -46,45 +258,32 @@ function cos_plugin_action_links( $links, $file ) {
 }
 add_filter( 'plugin_action_links', 'cos_plugin_action_links', 10, 2 );
 
+
 // 在导航栏“设置”中添加条目
 function cos_add_setting_page() {
-    add_options_page('腾讯云COS设置', '腾讯云COS设置', 8, __FILE__, 'cos_setting_page');
+    add_options_page('腾讯云COS设置', '腾讯云COS设置', 'manage_options', __FILE__, 'cos_setting_page');
 }
 add_action('admin_menu', 'cos_add_setting_page');
 
+
 // 插件设置页面
 function cos_setting_page() {
-
+	if (!current_user_can('manage_options')) {
+    	wp_die('Insufficient privileges!');
+	}
 	$options = array();
-	if($_POST['bucket']) {
-		$options['bucket'] = trim(stripslashes($_POST['bucket']));
-	}
-	if($_POST['app_id']) {
-		$options['app_id'] = trim(stripslashes($_POST['app_id']));
-	}
-	if($_POST['secret_id']) {
-		$options['secret_id'] = trim(stripslashes($_POST['secret_id']));
-	}
-	if($_POST['secret_key']) {
-		$options['host'] = trim(stripslashes($_POST['secret_key']));
-	}
-	if($_POST['nothumb']) {
+	if (!empty($_POST)) {
+		$options['bucket'] = (isset($_POST['bucket'])) ? trim(stripslashes($_POST['bucket'])) : '';
+		$options['app_id'] = (isset($_POST['app_id'])) ? trim(stripslashes($_POST['app_id'])) : '';
+		$options['secret_id'] = (isset($_POST['secret_id'])) ? trim(stripslashes($_POST['secret_id'])) : '';
+		$options['secret_key'] = (isset($_POST['secret_key'])) ? trim(stripslashes($_POST['secret_key'])) : '';
 		$options['nothumb'] = (isset($_POST['nothumb']))?'true':'false';
-	}
-	if($_POST['nolocalsaving']) {
 		$options['nolocalsaving'] = (isset($_POST['nolocalsaving']))?'true':'false';
-	}
-	if($_POST['upload_url_path']) {
 		//仅用于插件卸载时比较使用
-		$options['upload_url_path'] = trim(stripslashes($_POST['upload_url_path']));
+		$options['upload_url_path'] = (isset($_POST['upload_url_path'])) ? trim(stripslashes($_POST['upload_url_path'])) : '';
 	}
 
-	//检查提交的AK/SK是否有管理该bucket的权限
-	$flag = 0;
-	if($_POST['bucket']&&$_POST['app_id']&&$_POST['secret_id']&&$_POST['secret_key']){
-
-	}
-
+	// 若$options不为空数组，则更新数据
 	if($options !== array() ){
 		//更新数据库
 		update_option('cos_options', $options);
@@ -97,20 +296,7 @@ function cos_setting_page() {
 		update_option('upload_url_path', $upload_url_path );
 
 ?>
-<div class="updated"><p><strong>设置已保存！
-<?php
-	if($flag==0)
-		echo '<span style="color:#F00">注意：您的AK/SK没有管理该Bucket的权限，因此不能正常使用！</span>';
-	elseif($flag == -1)
-		echo '<span style="color:#F00">注意：网络通信错误，未能校验您的AK/SK是否对该bucket是否具有管理权限</span>';
-	elseif($flag == -11)
-		echo '<span style="color:#F00">注意：该BUCKET现在处于“公开读写”状态，会有安全隐患哦！设置成“公开读”就足够了。</span>';
-	elseif($flag == -12)
-		echo '<span style="color:#F00">注意：该BUCKET现在处于“私有”状态，不能被其他人访问哦！建议将BUKET权限设置成“公开读”。</span>';
-	elseif($flag == -2)
-		echo '<span style="color:#F00">注意：该BUCKET的“存储地域”或“HOST主机”可能搞错了，请再次确认下。</span>';
-?>
-</strong></p></div>
+<div class="updated"><p><strong>设置已保存！</strong></p></div>
 <?php
     }
 
@@ -118,15 +304,15 @@ function cos_setting_page() {
 	$upload_path = get_option('upload_path');
 	$upload_url_path = get_option('upload_url_path');
 
-    $cos_bucket = attribute_escape($cos_options['bucket']);
-    $cos_app_id = attribute_escape($cos_options['app_id']);
-    $cos_secret_id = attribute_escape($cos_options['secret_id']);
-	$cos_secret_key = attribute_escape($cos_options['secret_key']);
+    $cos_bucket = esc_attr($cos_options['bucket']);
+    $cos_app_id = esc_attr($cos_options['app_id']);
+    $cos_secret_id = esc_attr($cos_options['secret_id']);
+	$cos_secret_key = esc_attr($cos_options['secret_key']);
 
-	$cos_nothumb = attribute_escape($cos_options['nothumb']);
+	$cos_nothumb = esc_attr($cos_options['nothumb']);
 	$cos_nothumb = ( $cos_nothumb == 'true' );
 
-	$cos_nolocalsaving = attribute_escape($cos_options['nolocalsaving']);
+	$cos_nolocalsaving = esc_attr($cos_options['nolocalsaving']);
 	$cos_nolocalsaving = ( $cos_nolocalsaving == 'true' );
 ?>
 <div class="wrap" style="margin: 10px;">

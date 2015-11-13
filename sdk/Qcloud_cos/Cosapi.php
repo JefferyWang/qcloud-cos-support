@@ -21,7 +21,7 @@ class Cosapi
     const COSAPI_ILLEGAL_SLICE_SIZE_ERROR = -4;
 
     private static $timeout = 30;
-    
+
     public static function setTimeout($t) {
         if (!is_int($t) || $t < 0) {
             return false;
@@ -35,11 +35,13 @@ class Cosapi
         //return str_replace('%2F', '/',  urlencode($path));
         return str_replace('%2F', '/',  rawurlencode($path));
     }
-    
+
     public static function generateResUrl($bucketName, $dstPath) {
-        return Conf::API_COSAPI_END_POINT . Conf::APPID . '/' . $bucketName . $dstPath;
+        $conf_object = new Conf();
+        $appId = $conf_object::$APPID;
+        return Conf::API_COSAPI_END_POINT . $appId . '/' . $bucketName . $dstPath;
     }
-        
+
     public static function sendRequest($req) {
         //var_dump($req);
 
@@ -53,17 +55,17 @@ class Cosapi
                 return $ret;
             } else {
                 return array(
-                    'httpcode' => $info['http_code'], 
-                    'code' => $ret['code'], 
-                    'message' => $ret['message'], 
+                    'httpcode' => $info['http_code'],
+                    'code' => $ret['code'],
+                    'message' => $ret['message'],
                     'data' => array()
                 );
             }
         } else {
             return array(
-                    'httpcode' => $info['http_code'], 
-                    'code' => self::COSAPI_NETWORK_ERROR, 
-                    'message' => $rsp, 
+                    'httpcode' => $info['http_code'],
+                    'code' => self::COSAPI_NETWORK_ERROR,
+                    'message' => $rsp,
                     'data' => array()
                 );
         }
@@ -83,9 +85,9 @@ class Cosapi
 
         if (!file_exists($srcPath)) {
             return array(
-                    'httpcode' => 0, 
-                    'code' => self::COSAPI_FILE_NOT_EXISTS, 
-                    'message' => 'file '.$srcPath.' not exists', 
+                    'httpcode' => 0,
+                    'code' => self::COSAPI_FILE_NOT_EXISTS,
+                    'message' => 'file '.$srcPath.' not exists',
                     'data' => array());
         }
 
@@ -126,8 +128,8 @@ class Cosapi
      * @return [type]                [description]
      */
     public static function upload_slice(
-            $srcPath, $bucketName, $dstPath, 
-            $bizAttr = null, 
+            $srcPath, $bucketName, $dstPath,
+            $bizAttr = null,
             $sliceSize = 0, $session = null) {
 
         $srcPath = realpath($srcPath);
@@ -143,9 +145,9 @@ class Cosapi
 
         if (!file_exists($srcPath)) {
             return array(
-                    'httpcode' => 0, 
-                    'code' => self::COSAPI_FILE_NOT_EXISTS, 
-                    'message' => 'file '.$srcPath.' not exists', 
+                    'httpcode' => 0,
+                    'code' => self::COSAPI_FILE_NOT_EXISTS,
+                    'message' => 'file '.$srcPath.' not exists',
                     'data' => array());
         }
 
@@ -155,7 +157,7 @@ class Cosapi
         $sha1 = hash_file('sha1', $srcPath);
 
         $ret = self::upload_prepare(
-                $fileSize, $sha1, $sliceSize, 
+                $fileSize, $sha1, $sliceSize,
                 $sign, $url, $bizAttr, $session);
 
         var_dump($ret);
@@ -165,7 +167,7 @@ class Cosapi
             return $ret;
         }
 
-        if(isset($ret['data']) 
+        if(isset($ret['data'])
                 && isset($ret['data']['url'])) {
         //秒传命中，直接返回了url
             return $ret;
@@ -209,7 +211,7 @@ class Cosapi
             'filesize' => $fileSize,
             'sha' => $sha1,
         );
-        isset($bizAttr) && 
+        isset($bizAttr) &&
             $data['biz_attr'] = $bizAttr;
         isset($session) &&
             $data['session'] = $session;
@@ -234,14 +236,14 @@ class Cosapi
 
         $ret = self::sendRequest($req);
         return $ret;
-    
+
     }
 
     private static function upload_data(
             $fileSize, $sha1, $sliceSize,
-            $sign, $url, $srcPath, 
+            $sign, $url, $srcPath,
             $offset, $session) {
-    
+
         //$handle = fopen($srcPath, "rb");
         while ($fileSize > $offset) {
             $filecontent = file_get_contents(
@@ -263,7 +265,7 @@ class Cosapi
             );
             */
 
-            $boundary = '---------------------------' . substr(md5(mt_rand()), 0, 10); 
+            $boundary = '---------------------------' . substr(md5(mt_rand()), 0, 10);
             $data = self::generateSliceBody(
                     $filecontent, $offset, $sha1,
                     $session, basename($srcPath), $boundary);
@@ -290,13 +292,13 @@ class Cosapi
                 $retry_times++;
             } while($retry_times < self::MAX_RETRY_TIMES);
 
-            if($ret['httpcode'] != 200 
+            if($ret['httpcode'] != 200
                     || $ret['code'] != 0) {
                 return $ret;
             }
 
             if ($ret['data']['session']) {
-                $session = 
+                $session =
                     $ret['data']['session'];
             }
             $offset += $sliceSize;
@@ -307,7 +309,7 @@ class Cosapi
 
 
     private static function generateSliceBody(
-            $fileContent, $offset, $sha, 
+            $fileContent, $offset, $sha,
             $session, $fileName, $boundary) {
         $formdata = '';
 
@@ -324,7 +326,7 @@ class Cosapi
         $formdata .= "content-disposition: form-data; name=\"session\"\r\n\r\n" . $session . "\r\n";
 
         $formdata .= '--' . $boundary . "\r\n";
-        $formdata .= "content-disposition: form-data; name=\"fileContent\"; filename=\"" . $fileName . "\"\r\n"; 
+        $formdata .= "content-disposition: form-data; name=\"fileContent\"; filename=\"" . $fileName . "\"\r\n";
         $formdata .= "content-type: application/octet-stream\r\n\r\n";
 
         $data = $formdata . $fileContent . "\r\n--" . $boundary . "--\r\n";
@@ -356,7 +358,7 @@ class Cosapi
             'op' => 'create',
             'biz_attr' => (isset($bizAttr) ? $bizAttr : ''),
         );
-        
+
         $data = json_encode($data);
 
         $req = array(
@@ -381,11 +383,11 @@ class Cosapi
      * @param  string  $pattern  eListBoth,ListDirOnly,eListFileOnly  默认both
      * @param  int     $order    默认正序(=0), 填1为反序,
      * @param  string  $offset   透传字段,用于翻页,前端不需理解,需要往前/往后翻页则透传回来
-     *  
+     *
      */
     public static function listFolder(
-                    $bucketName, $path, $num = 20, 
-                    $pattern = 'eListBoth', $order = 0, 
+                    $bucketName, $path, $num = 20,
+                    $pattern = 'eListBoth', $order = 0,
                     $context = null) {
         if (preg_match('/^\//', $path) == 0) {
             $path = '/' . $path;
@@ -406,11 +408,11 @@ class Cosapi
      * @param  string  $pattern  eListBoth,ListDirOnly,eListFileOnly  默认both
      * @param  int     $order    默认正序(=0), 填1为反序,
      * @param  string  $offset   透传字段,用于翻页,前端不需理解,需要往前/往后翻页则透传回来
-     *  
+     *
      */
     public static function prefixSearch(
-                    $bucketName, $prefix, $num = 20, 
-                    $pattern = 'eListBoth', $order = 0, 
+                    $bucketName, $prefix, $num = 20,
+                    $pattern = 'eListBoth', $order = 0,
                     $context = null) {
 
         if (preg_match('/^\//', $prefix) == 0) {
@@ -422,7 +424,7 @@ class Cosapi
     }
 
     private static function listBase(
-                    $bucketName, $path, $num = 20, 
+                    $bucketName, $path, $num = 20,
                     $pattern = 'eListBoth', $order = 0, $context = null) {
 
         $path = self::cosUrlEncode($path);
@@ -437,7 +439,7 @@ class Cosapi
             'order' => $order,
             'context' => $context,
         );
-        
+
         //$data = json_encode($data);
         $url = $url . '?' . http_build_query($data);
 
@@ -451,7 +453,7 @@ class Cosapi
         );
 
         return self::sendRequest($req);
-    } 
+    }
 
 
     /*
@@ -460,7 +462,7 @@ class Cosapi
      * @param  string  $path 路径， sdk会补齐末尾的 '/'
      *
      */
-    public static function updateFolder($bucketName, $path, 
+    public static function updateFolder($bucketName, $path,
                   $bizAttr = null) {
         if (preg_match('/^\//', $path) == 0) {
             $path = '/' . $path;
@@ -478,7 +480,7 @@ class Cosapi
      * @param  string  $path 路径
      *
      */
-    public static function update($bucketName, $path, 
+    public static function update($bucketName, $path,
                   $bizAttr = null) {
         if (preg_match('/^\//', $path) == 0) {
             $path = '/' . $path;
@@ -487,7 +489,7 @@ class Cosapi
         return self::updateBase($bucketName, $path, $bizAttr);
     }
 
-    private static function updateBase($bucketName, $path, 
+    private static function updateBase($bucketName, $path,
                   $bizAttr = null) {
 
         $path = self::cosUrlEncode($path);
@@ -500,7 +502,7 @@ class Cosapi
             'op' => 'update',
             'biz_attr' => $bizAttr,
         );
-        
+
         $data = json_encode($data);
 
         $req = array(
@@ -521,7 +523,7 @@ class Cosapi
      * 目录信息 查询
      * @param  string  $bucketName
      * @param  string  $path 路径，sdk会补齐末尾的 '/'
-     *  
+     *
      */
     public static function statFolder(
                     $bucketName, $path) {
@@ -539,7 +541,7 @@ class Cosapi
      * 文件信息 查询
      * @param  string  $bucketName
      * @param  string  $path 路径
-     *  
+     *
      */
     public static function stat(
                     $bucketName, $path) {
@@ -575,7 +577,7 @@ class Cosapi
         );
 
         return self::sendRequest($req);
-    } 
+    }
 
     /*
      * 删除目录
@@ -626,7 +628,7 @@ class Cosapi
         $data = array(
             'op' => 'delete',
         );
-        
+
         $data = json_encode($data);
 
         $req = array(
@@ -642,7 +644,6 @@ class Cosapi
 
         return self::sendRequest($req);
     }
-    
+
 //end of script
 }
-
