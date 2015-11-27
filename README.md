@@ -21,6 +21,9 @@ Git@OSC项目地址:  [http://git.oschina.net/wangjunfeng/qcloud-cos-support](ht
 * 方法一：在wordpress插件管理页面有设置按钮，进行设置
 * 方法二：在wordpress后台管理左侧导航栏`设置`下`腾讯云cos设置`，点击进入设置页面
 
+## 特别说明
+* 本插件仅支持`PHP 5.3+`版本
+
 ## 截图
 ![设置页面](http://i12.tietuku.com/93f74b6ccf98e0b7.jpg)
 ![媒体中心](http://i12.tietuku.com/c1cef7ae6dbdcb2c.jpg)
