@@ -80,6 +80,11 @@ class Cosapi
      */
     public static function upload($srcPath, $bucketName, $dstPath, $bizAttr = null) {
 
+    	var_dump($srcPath);
+    	var_dump($bucketName);
+    	var_dump($dstPath);
+    	var_dump($bizAttr);
+    	var_dump("1111111");
         $srcPath = realpath($srcPath);
         $dstPath = self::cosUrlEncode($dstPath);
 
@@ -131,6 +136,12 @@ class Cosapi
             $srcPath, $bucketName, $dstPath,
             $bizAttr = null,
             $sliceSize = 0, $session = null) {
+
+
+	    var_dump($srcPath);
+	    var_dump($bucketName);
+	    var_dump($dstPath);
+	    var_dump($bizAttr);
 
         $srcPath = realpath($srcPath);
 
