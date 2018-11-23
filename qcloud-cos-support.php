@@ -12,6 +12,8 @@ require_once('sdk/include.php');
 use Qcloud_cos\Auth;
 use Qcloud_cos\Cosapi;
 
+require 'cos-php-sdk-v5/vendor/autoload.php';
+
 if (!defined('WP_PLUGIN_URL'))
     define('WP_PLUGIN_URL', WP_CONTENT_URL . '/plugins');//  plugin url
 
@@ -49,22 +51,66 @@ function _file_upload($object, $file, $opt = array())
     //设置超时时间
     //set_time_limit(120);
 
-    //如果文件不存在，直接返回FALSE
+    $key = str_replace("/wp-content/uploads/", "/", $object);
+
+	//如果文件不存在，直接返回FALSE
     if (!@file_exists($file))
         return FALSE;
 
     //获取WP配置信息
     $cos_options = get_option('cos_options', TRUE);
+
     $cos_bucket = esc_attr($cos_options['bucket']);
 
     if (@file_exists($file)) {
         try {
             //实例化存储对象
-            $qcloud_cos = new Cosapi();
-            $dirname = dirname($object);
-            _create_folder($cos_bucket, $dirname);
-            $data = $qcloud_cos->upload($file, $cos_bucket, $object);
-            return TRUE;
+//            $qcloud_cos = new Cosapi();
+//            $dirname = dirname($object);
+//            _create_folder($cos_bucket, $dirname);
+//            $data = $qcloud_cos->upload($file, $cos_bucket, $object);
+
+	        $cosClient = new Qcloud\Cos\Client(array(
+		        'region' => 'ap-guangzhou', #地域，如ap-guangzhou,ap-beijing-1
+		        'credentials' => array(
+			        'secretId' => $cos_options['secret_id'],
+			        'secretKey' => $cos_options['secret_key']
+		        ))
+            );
+
+	        // 若初始化 Client 时未填写 appId，则 bucket 的命名规则为{name}-{appid} ，此处填写的存储桶名称必须为此格式
+	        $bucket = $cos_options['bucket'];
+
+            # 上传文件
+            ## putObject(上传接口，最大支持上传5G文件)
+            ### 上传内存中的字符串
+	        try {
+		        $result = $cosClient->putObject(array(
+			        'Bucket' => $bucket,
+			        'Key' => $key,
+			        'Body' => 'Hello World!'
+		        ));
+
+		        # 可以直接通过$result读出返回结果
+//		        echo ($result['ETag']);
+	        } catch (\Exception $e) {
+		        echo($e);
+	        }
+
+            ### 上传文件流
+	        try {
+		        $result = $cosClient->putObject(array(
+			        'Bucket' => $bucket,
+			        'Key' => $key,
+			        'Body' => fopen($file, 'rb')
+		        ));
+//		        print_r($result);
+	        } catch (\Exception $e) {
+		        echo($e);
+	        }
+
+
+	        return TRUE;
         } catch (Exception $ex) {
             return FALSE;
         }
